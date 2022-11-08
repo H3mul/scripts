@@ -1,0 +1,178 @@
+#!/bin/bash
+
+function help () {
+    script_name=$(basename $0)
+    usage=$(cat << EOF
+    Usage: $script_name {upload|download} [DIR [FILE]] [--dir=SUBDIR] [--server=SERVER] [--force] [--all] [-h]
+
+    DIR FILE      :  Used for vim-sync - eg '$script_name upload DIR FILE' syncs with servers in SYNC_SERVER env.
+
+    DIR           :  Default - '.'
+    FILE          :  Default - '*'
+    -s, --server  :  Server to sync with (can be repeated). Overrides SYNC_SERVER env. If there are multiple servers, 'upload' uploads to all of them but 'download' downloads only from the first.
+    -d, --dir     :  Whitelist subdirs inside DIR contents to sync. Can be used multiple times.
+    -p, --path    :  Set remote server path of root. Overrides SYNC_PATH env.
+    -a, --all     :  Sync all contents - remove default value of --exclude.
+    -f, --force   :  Force sync (ignore rsync last modified times)
+    -v, --verbose :  Display debug messages
+    -n, --dry-run :  Do rsync dry run
+    -h, --help    :  Display this message
+EOF
+)
+    echo "$usage" >&2
+}
+
+function ensure_arg_value () {
+    [ -z $2 ] && echo "Error: '$1' needs to have a supplied value." >&2 && exit
+}
+
+function debug () {
+    [ $DEBUG -gt 0 ] && echo "[DEBUG] $*" >&2
+}
+
+function abort () {
+    echo -e "Error: $*\n" >&2 && help && exit 1
+}
+
+function join () {
+    local d=$1; shift; local f=$1; shift; printf %s "$f" "${@/#/$d}";
+}
+
+DEBUG=0
+SYNC_ALL=0
+DRY_RUN=0
+FORCE=0
+
+DIR="."
+FILE=""
+
+INCLUDE=()
+POSITIONAL_ARGS=()
+
+while [ ! -z "$*" ]; do
+    case "$1" in
+        -h|--help)
+            help
+            exit
+            ;;
+        -v|--verbose)
+            DEBUG=1
+            shift
+            ;;
+        -a|--all)
+            SYNC_ALL=1
+            shift
+            ;;
+        -f|--force)
+            FORCE=1
+            shift
+            ;;
+        -n|--dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        -p|--path)
+            ensure_arg_value $1 $2
+            SYNC_PATH=("$2")
+            shift 2
+            ;;
+        -s|--server)
+            ensure_arg_value $1 $2
+            SERVERS+=("$2")
+            shift 2
+            ;;
+        -d|--dir)
+            ensure_arg_value $1 $2
+            INCLUDE+=("$2")
+            shift 2
+            ;;
+        -*)
+            abort "Unsupported flag: $1"
+            ;;
+        *)
+            POSITIONAL_ARGS+=($1)
+            shift
+            ;;
+    esac
+done
+
+COMMAND=${POSITIONAL_ARGS[0]}
+[[ ! $COMMAND =~ ^(upload|download)$ ]] && abort "Sync action needs to be 'upload' or 'download'"
+
+[ ! -z ${POSITIONAL_ARGS[1]} ] && DIR=${POSITIONAL_ARGS[1]}
+[ ! -z ${POSITIONAL_ARGS[2]} ] && FILE=${POSITIONAL_ARGS[2]}
+
+# No arg supplied servers, try env
+if [ ${#SERVERS[@]} -eq 0 ]; then
+    [ ! -z "$SYNC_SERVERS" ] && SERVERS+=($SYNC_SERVERS)
+    [ ! -z "$SYNC_PATH" ] && SYNC_PATH="$SYNC_PATH"
+fi
+
+[ ${#SERVERS[@]} -eq 0 ] && abort "No server to sync with."
+
+SUBDIRS=()
+for subdir in "${INCLUDE[@]}"; do
+    # Strip trailing + leading slash if there
+    [[ "${subdir}" == */ ]] && subdir="${subdir: : -1}"
+    [[ "${subdir}" == /* ]] && subdir="${subdir:1}"
+    SUBDIRS+=($subdir)
+done
+
+debug "Run settings:"
+debug "SERVERS = (${SERVERS[@]})"
+debug "SUBDIRS = (${SUBDIRS[@]})"
+debug "COMMAND = $COMMAND"
+debug "DIR = $DIR"
+debug "FILE = $FILE"
+
+sync() {
+
+    # Display sync summary
+    [ ${#SUBDIRS[@]} -ne 0 ] && subdirs="{$(join ', ' ${SUBDIRS[@]})}"
+    echo "[+] Syncing $1${subdirs} => $2"
+
+    cmd="rsync --progress --info=progress2 --archive --compress --checksum --verbose --prune-empty-dirs"
+
+    # To add all files inside subdir
+    # For each subdir, have to include entire chain:
+    # --include='/bin/foo/dir/***' --include='/bin/foo' --include='/bin'
+    for subdir in "${SUBDIRS[@]}"; do
+        cmd="$cmd --include='/${subdir}/***'";
+
+        parent=$(dirname $subdir)
+        while [ "$parent" != "." ]; do
+            cmd="$cmd --include='/${parent}/'";
+            parent=$(dirname $parent)
+        done
+    done
+
+    # Exclude all files if whitelist (include)
+    [ ${#SUBDIRS[@]} -ne 0 ] && cmd="$cmd --exclude='*'"
+
+    [ $FORCE -eq 0 ] && cmd="$cmd --update"
+    [ $SYNC_ALL -eq 0 ] && cmd="$cmd --cvs-exclude"
+    [ $DRY_RUN -eq 1 ] && cmd="$cmd --dry-run --list-only"
+
+    cmd="$cmd -e ssh $1 $2"
+
+    debug "Resulting RSYNC command: $cmd"
+    eval $cmd
+}
+
+for server in "${SERVERS[@]}"; do
+    src="${DIR}/"
+    dst="${server}:${SYNC_PATH}/${DIR}/"
+    [ ! -z "$FILE" ] && src="${src}${FILE}" && dst="${dst}${FILE}"
+
+    case "$COMMAND" in
+        upload)
+            # Upload to all servers in the list
+            sync "$src" "$dst"
+            ;;
+        download)
+            sync "$dst" "$src"
+            # Only download from the first server in the list
+            break
+            ;;
+    esac
+done

@@ -1,0 +1,4 @@
+#!/bin/bash
+# !/usr/bin/zsh
+
+sudo xinit /usr/bin/env su hemul -c "gaming_environment.sh" -- :1 vt6

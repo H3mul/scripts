@@ -1,0 +1,90 @@
+#!/bin/bash
+
+template="$ZETTEL_HOME/../template.md"
+notes_home="$ZETTEL_HOME"
+
+id_tpl="id:"
+date_tpl="date:"
+title_tpl="title:"
+
+date_fmt=$(grep -ioP "$date_tpl \K.*" $template)
+id_date_fmt=$(grep -ioP "$id_tpl \K.*" $template)
+
+create_note () {
+    note_title=$1
+    note_id=$(date "+$id_date_fmt")
+    note_filename="$note_id-${note_title// /-}.md"
+    note_file="$notes_home/$note_filename"
+
+    if [ -f $note_file ];then
+        echo "Note file $note_filename already exists! aborting..." > /dev/tty
+        exit
+    fi
+
+    cp $template $note_file
+    # Populate date
+    date_str=$(date "+$date_fmt")
+    sed -i "s/^$date_tpl.*$/$date_tpl $date_str/" $note_file
+    # Populate title
+    sed -i "s/^$title_tpl.*$/$title_tpl $note_title/" $note_file
+    # Populate id
+    sed -i "s/^$id_tpl.*$/$id_tpl $note_id/" $note_file
+
+    echo $note_file
+}
+
+open_note () {
+    note="$1"
+    if [ -z "$note" ]; then
+        exit
+    fi
+    nvim "+norm G$" "$notes_home/$note"
+}
+
+note_fzf () {
+    fzf --preview="bat --color=always --theme Nord --decorations=never $PWD/{}"
+}
+
+list_notes () {
+    echo $(cd $notes_home && fd --type f --follow -E .git --no-ignore-vcs | note_fzf)
+}
+
+grep_notes () {
+    echo $(cd $notes_home && rg "$*" -l --hidden --smart-case | note_fzf)
+}
+
+save_notes () {
+    (cd $notes_home && git add . && git commit -m "note save" > /dev/null 2>&1 \
+        || echo "Save unsuccessfull" > /dev/tty)
+}
+
+case $1 in
+    "--no-edit"|"--noedit")
+        noedit=true
+        shift 1
+esac
+
+action=$1
+shift 1
+
+case $action in
+    "new")
+        note_file=$(create_note "$*")
+        if [[ $noedit != true ]];then
+            nvim $note_file -c "$"
+        else
+            echo $note_file
+        fi
+
+        exit
+        ;;
+    "save")
+        save_notes
+        ;;
+    "search")
+        open_note $(grep_notes "$*")
+        ;;
+    *)
+        open_note $(list_notes)
+        ;;
+esac

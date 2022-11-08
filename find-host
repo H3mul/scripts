@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# Abort script with error message
+abort() {
+    echo $* >&2
+    exit 1
+}
+
+# Retrieve values from ~/.ssh/.config file
+get_ssh_config() {
+    ssh -G $1
+}
+config_port() {
+    echo "$1" | grep "^port \K[0-9]*" -oP
+}
+config_user() {
+    echo "$1" | grep "^user \K\w*" -oP
+}
+config_ip() {
+    echo "$1" | grep "^hostname \K\S*$" -oP
+}
+
+
+known_hosts_file="$HOME/.ssh/known_hosts"
+
+# retrieve ssh key from known_hosts
+lookup_known_host() {
+    ip=$1; port=$2
+    if [ ! -z $port ] && [ "$port" -ne 22 ]; then pattern="\[$ip\]:$port"; else pattern=$ip; fi
+    cat $known_hosts_file | grep "^$pattern"
+}
+
+# Fingerprint hosts entry
+fingerprint(){
+    ssh-keygen -lf <(echo "$*") 2>/dev/null | awk '{print $2}' | sort
+}
+
+# Scan lan for open port 22 and return ips
+lan_ssh_ips() {
+    subnet=$1
+    nmap "$subnet" -np 22 --open -T4 -oG - | grep Up | awk '{print $2}'
+}
+
+# Scan host for ssh keys
+scan_ssh_key(){
+    port=""
+    if [ ! -z $2 ];then port="-p $2"; fi
+    ssh-keyscan $1 $port 2>/dev/null
+}
+
+
+# find host with matching fingerprint on lan
+find_on_lan() {
+    target_fingerprint=$1
+    subnet=$2
+    target_ips=()
+
+    ips=$(lan_ssh_ips $subnet)
+    for ip in $ips; do
+        keys=$(scan_ssh_key $ip)
+        fingerprints=$(fingerprint "$keys")
+
+        if [[ "$fingerprints" =~ "$target_fingerprint" ]]; then
+            target_ips+=( "$ip" )
+        fi
+    done
+    echo "${target_ips[@]}" | sed 's/\s\+/\n/g'
+}
+
+host=$1
+if [ -z $1 ] || [ "$1" == "-h" ]; then
+    echo "Finds all hosts on LAN subnet with a known host fingerprint."
+    echo "Usage: $0 <known_hostname> [ <subnet> ]"
+    exit
+fi
+
+subnet=$2
+if [ -z $2 ]; then
+    if command -v ip-addr &> /dev/null; then
+        subnet=$(ip-addr)
+    else
+        abort "No subnet specified, and ip-addr not available."
+    fi
+fi
+
+config=$(get_ssh_config $host)
+ip=$(config_ip "$config")
+port=$(config_port "$config")
+if [ -z "$ip" ]; then
+    abort "Known host could not be resolved to an IP."
+fi
+
+host_entry=$(lookup_known_host $ip $port)
+if [ -z "$host_entry" ]; then
+    abort "Known host not found in $known_hosts_file."
+fi
+
+fingerprint=$(fingerprint $host_entry)
+
+lan_ip=$(find_on_lan $fingerprint $subnet)
+if [ -z "$lan_ip" ]; then
+    abort "Unable to find known host fingerprint on $subnet."
+else
+    echo "$lan_ip"
+fi

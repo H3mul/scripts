@@ -1,0 +1,4 @@
+#!/bin/bash
+
+dev=$(ip route | grep 'default.*dev \K[0-9a-z]+' -oPm 1)
+ip addr show $dev | grep "inet [0-9.\/]*" | awk '{print $2}'
