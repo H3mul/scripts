@@ -122,7 +122,7 @@ get_theme_repo() {
 install_plugin() {
     plugin_id="${1}"
 
-    [ -d "${PLUGINS_DIR}/$plugin_id" ] && msg "${GRAY}$plugin_id${NOFORMAT} already installed, skipping..." && return
+    [ -f "${PLUGINS_DIR}/$plugin_id/${PLUGIN_ASSETS[0]}" ] && msg "${GRAY}$plugin_id${NOFORMAT} already installed, skipping..." && return
     repo="$(get_plugin_repo $plugin_id)"
 
     msg "Installing plugin ${GRAY}$plugin_id${NOFORMAT}..."
