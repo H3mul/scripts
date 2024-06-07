@@ -122,7 +122,7 @@ get_theme_repo() {
 install_plugin() {
     plugin_id="${1}"
 
-    [ -f "${PLUGINS_DIR}/$plugin_id/${PLUGIN_ASSETS[0]}" ] && msg "${GRAY}$plugin_id${NOFORMAT} already installed, skipping..." && return
+    [ "${FORCE}" -ne 1 ] && [ -f "${PLUGINS_DIR}/$plugin_id/${PLUGIN_ASSETS[0]}" ] && msg "${GRAY}$plugin_id${NOFORMAT} already installed, skipping..." && return
     repo="$(get_plugin_repo $plugin_id)"
 
     msg "Installing plugin ${GRAY}$plugin_id${NOFORMAT}..."
@@ -131,7 +131,7 @@ install_plugin() {
 install_theme() {
     theme_name="${1}"
 
-    [ -d "${THEMES_DIR}/$theme_name" ] && msg "${GRAY}$theme_name${NOFORMAT} already installed, skipping..." && return
+    [ "${FORCE}" -ne 1 ] && [ -d "${THEMES_DIR}/$theme_name" ] && msg "${GRAY}$theme_name${NOFORMAT} already installed, skipping..." && return
     repo="$(get_theme_repo "$theme_name")"
 
     msg "Installing theme ${GRAY}$theme_name${NOFORMAT}..."
@@ -145,6 +145,8 @@ command -v jq >/dev/null || die "jq required for parsing - install and run this 
 
 VAULT_ROOT=$(git rev-parse --show-toplevel || pwd)
 cd "$VAULT_ROOT"
+
+[ "${1-}" = "-f" ] && FORCE=1
 
 PLUGIN_LIST_FILE="./.obsidian/community-plugins.json"
 PLUGIN_PATCH_FILE="./.obsidian/community-plugins-patch.json"
@@ -161,6 +163,8 @@ OPTIONAL_ASSETS=(styles.css) # Dont fail on these
 [ -f "${APPEARANCE_FILE}" ] || die "Could not find Obsidian appearance file ${APPEARANCE_FILE} - run script inside an Obsidian vault"
 
 msg "Running on the vault at ${PWD}"
+
+[ "${FORCE}" -eq 1 ] && msg "Force-reinstalling found plugins and themes..."
 
 plugins=$(jq -r '.[]' ${PLUGIN_LIST_FILE})
 theme=$(jq -r '.cssTheme' ${APPEARANCE_FILE})
