@@ -146,6 +146,7 @@ command -v jq >/dev/null || die "jq required for parsing - install and run this 
 VAULT_ROOT=$(git rev-parse --show-toplevel || pwd)
 cd "$VAULT_ROOT"
 
+FORCE=0
 [ "${1-}" = "-f" ] && FORCE=1
 
 PLUGIN_LIST_FILE="./.obsidian/community-plugins.json"
