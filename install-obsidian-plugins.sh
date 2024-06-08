@@ -74,6 +74,8 @@ download_latest_gh_assets() {
 
         if [ "$result" -ne 0 ]; then
             repo_dl_failed=1
+        else
+            msg "${GREEN}Successfully found assets in repo root${NOFORMAT}"
         fi
     fi
 
@@ -165,7 +167,7 @@ OPTIONAL_ASSETS=(styles.css) # Dont fail on these
 
 msg "Running on the vault at ${PWD}"
 
-[ "${FORCE}" -eq 1 ] && msg "Force-reinstalling found plugins and themes..."
+[ "${FORCE}" -eq 1 ] && msg "${YELLOW}Force-reinstalling found plugins and themes...${NOFORMAT}"
 
 plugins=$(jq -r '.[]' ${PLUGIN_LIST_FILE})
 theme=$(jq -r '.cssTheme' ${APPEARANCE_FILE})
