@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Based on:
+# https://gist.github.com/m-radzikowski/53e0b39e9a59a1518990e76c2bff8038
+
 # ------------------------------------------------------------------------------------
 # Run this script from inside an Obsidian vault, and it will automatically install
 # all the registered community plugins and themes into the .obsidian directory
@@ -18,6 +21,25 @@ setup_colors() {
   else
     NOFORMAT='' RED='' GREEN='' ORANGE='' BLUE='' PURPLE='' CYAN='' YELLOW=''
   fi
+}
+
+parse_params() {
+  # default values of variables set from params
+  FORCE=0
+  PLUGIN_SELECTION=()
+
+  while :; do
+    case "${1-}" in
+        -f | --force) FORCE=1 ;;
+        -?*) die "Unknown option: $1" ;;
+        "") break ;;
+        *) PLUGIN_SELECTION+=("$1") ;;
+    esac
+    shift
+  done
+
+  args=("$@")
+  return 0
 }
 
 msg() {
@@ -141,15 +163,13 @@ install_theme() {
 }
 
 setup_colors
+parse_params "$@"
 
 # Prereqs
 command -v jq >/dev/null || die "jq required for parsing - install and run this script again."
 
 VAULT_ROOT=$(git rev-parse --show-toplevel || pwd)
 cd "$VAULT_ROOT"
-
-FORCE=0
-[ "${1-}" = "-f" ] && FORCE=1
 
 PLUGIN_LIST_FILE="./.obsidian/community-plugins.json"
 PLUGIN_PATCH_FILE="./.obsidian/community-plugins-patch.json"
@@ -167,14 +187,19 @@ OPTIONAL_ASSETS=(styles.css) # Dont fail on these
 
 msg "Running on the vault at ${PWD}"
 
-[ "${FORCE}" -eq 1 ] && msg "${YELLOW}Force-reinstalling found plugins and themes...${NOFORMAT}"
-
 plugins=$(jq -r '.[]' ${PLUGIN_LIST_FILE})
 theme=$(jq -r '.cssTheme' ${APPEARANCE_FILE})
 
-msg
-msg "Found registered community plugins:"
-msg "${GRAY}$(join_list "$plugins")${NOFORMAT}"
+INSTALL_THEME=0
+if [ -z "${PLUGIN_SELECTION[*]}" ]; then 
+    msg
+    msg "Found registered community plugins:"
+    msg "${GRAY}$(join_list "$plugins")${NOFORMAT}"
+
+    INSTALL_THEME=1
+else
+    plugins=$(printf '%s\n' "${PLUGIN_SELECTION[@]}")
+fi
 
 msg
 msg "Installing plugins to ${PLUGINS_DIR}"
@@ -183,9 +208,11 @@ while IFS= read -r plugin; do
     install_plugin "$plugin"
 done <<< "$plugins"
 
-msg
-msg "Installing themes to ${THEMES_DIR}"
-install_theme "$theme"
+if [ -z "${INSTALL_THEME}" ]; then 
+    msg
+    msg "Installing theme to ${THEMES_DIR}"
+    install_theme "$theme"
+fi
 
 msg
 msg "${GREEN}Done${NOFORMAT}"
