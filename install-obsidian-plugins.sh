@@ -12,7 +12,7 @@ set -Eeuo pipefail
 trap clean_up ERR EXIT SIGINT SIGTERM
 
 clean_up() {
-    trap - ERR EXIT SIGINT SIGTERM
+  trap - ERR EXIT SIGINT SIGTERM
 }
 
 setup_colors() {
@@ -30,10 +30,10 @@ parse_params() {
 
   while :; do
     case "${1-}" in
-        -f | --force) FORCE=1 ;;
-        -?*) die "Unknown option: $1" ;;
-        "") break ;;
-        *) PLUGIN_SELECTION+=("$1") ;;
+    -f | --force) FORCE=1 ;;
+    -?*) die "Unknown option: $1" ;;
+    "") break ;;
+    *) PLUGIN_SELECTION+=("$1") ;;
     esac
     shift
   done
@@ -54,112 +54,112 @@ die() {
 }
 
 join_list() {
-    join_pattern=${2-, }
-    echo "${1}" | awk "ORS=\"$join_pattern\"" | sed "s/$join_pattern$/\n/"
+  join_pattern=${2-, }
+  echo "${1}" | awk "ORS=\"$join_pattern\"" | sed "s/$join_pattern$/\n/"
 }
 
 download_latest_gh_assets() {
-    repo="${1}"
-    location="${2}"
-    assets=("$@")
-    assets=("${assets[@]:2}")
+  repo="${1}"
+  location="${2}"
+  assets=("$@")
+  assets=("${assets[@]:2}")
 
-    mkdir -p "$location"
+  mkdir -p "$location"
 
-    release_dl_failed=0
-    for asset in "${assets[@]}"; do
-        set +e
-        wget "https://github.com/$repo/releases/latest/download/$asset" -qO "$location/$asset"
-        result=$?
-        set -e
+  release_dl_failed=0
+  for asset in "${assets[@]}"; do
+    set +e
+    wget "https://github.com/$repo/releases/latest/download/$asset" -qO "$location/$asset"
+    result=$?
+    set -e
 
-        if [ "$result" -ne 0 ] && [[ ! "${OPTIONAL_ASSETS[@]}" =~ "$asset" ]]; then
-            msg "${YELLOW}Missing asset from releases: ${GRAY}$asset${NOFORMAT}"
-            release_dl_failed=1 
-            break
-        fi
-    done
-
-    repo_dl_failed=0
-    if [ "$release_dl_failed" -ne 0 ]; then
-        msg "${YELLOW}Github release asset download failed, attempting to find assets in repo root...${NOFORMAT}"
-        rm -rf "$location/*" # Cleanup partial release dl
-
-        assets_include=""
-        for asset in "${assets[@]}"; do assets_include+="*/$asset "; done
-
-        set +e
-        wget "https://github.com/$repo/archive/master.tar.gz" -qO- | \
-            tar xz -C "$location" --strip-components 1 --wildcards $assets_include
-        result=$?
-        set -e
-
-        if [ "$result" -ne 0 ]; then
-            repo_dl_failed=1
-        else
-            msg "${GREEN}Successfully found assets in repo root${NOFORMAT}"
-        fi
+    if [ "$result" -ne 0 ] && [[ ! "${OPTIONAL_ASSETS[@]}" =~ "$asset" ]]; then
+      msg "${YELLOW}Missing asset from releases: ${GRAY}$asset${NOFORMAT}"
+      release_dl_failed=1
+      break
     fi
+  done
 
-    # Complete failure state, clean up and skip
-    if [ "$repo_dl_failed" -ne 0 ]; then
-        rm -rf "$location"
-        msg "${YELLOW}Failed to find all assets, skipping...${NOFORMAT}"
+  repo_dl_failed=0
+  if [ "$release_dl_failed" -ne 0 ]; then
+    msg "${YELLOW}Github release asset download failed, attempting to find assets in repo root...${NOFORMAT}"
+    rm -rf "$location/*" # Cleanup partial release dl
+
+    assets_include=""
+    for asset in "${assets[@]}"; do assets_include+="*/$asset "; done
+
+    set +e
+    wget "https://github.com/$repo/archive/master.tar.gz" -qO- |
+      tar xz -C "$location" --strip-components 1 --wildcards $assets_include
+    result=$?
+    set -e
+
+    if [ "$result" -ne 0 ]; then
+      repo_dl_failed=1
+    else
+      msg "${GREEN}Successfully found assets in repo root${NOFORMAT}"
     fi
+  fi
+
+  # Complete failure state, clean up and skip
+  if [ "$repo_dl_failed" -ne 0 ]; then
+    rm -rf "$location"
+    msg "${YELLOW}Failed to find all assets, skipping...${NOFORMAT}"
+  fi
 }
 
 OBSIDIAN_PLUGIN_REPO_JSON="" # cache
 get_plugins_data() {
-    if [ -z "${OBSIDIAN_PLUGIN_REPO_JSON}" ]; then
-        OBSIDIAN_PLUGIN_REPO_JSON="$(curl -sf https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json)" || die "Failed to fetch Obsidian community plugin repository."
-    fi
-    echo "${OBSIDIAN_PLUGIN_REPO_JSON}"
+  if [ -z "${OBSIDIAN_PLUGIN_REPO_JSON}" ]; then
+    OBSIDIAN_PLUGIN_REPO_JSON="$(curl -sf https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-plugins.json)" || die "Failed to fetch Obsidian community plugin repository."
+  fi
+  echo "${OBSIDIAN_PLUGIN_REPO_JSON}"
 }
 OBSIDIAN_THEME_REPO_JSON="" # cache
 get_themes_data() {
-    if [ -z "${OBSIDIAN_THEME_REPO_JSON}" ]; then
-        OBSIDIAN_THEME_REPO_JSON="$(curl -sf https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-css-themes.json)" || die "Failed to fetch Obsidian theme repository."
-    fi
-    echo "${OBSIDIAN_THEME_REPO_JSON}"
+  if [ -z "${OBSIDIAN_THEME_REPO_JSON}" ]; then
+    OBSIDIAN_THEME_REPO_JSON="$(curl -sf https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/community-css-themes.json)" || die "Failed to fetch Obsidian theme repository."
+  fi
+  echo "${OBSIDIAN_THEME_REPO_JSON}"
 }
 
 get_plugin_repo() {
-    plugin="${1}"
-    plugin_repo=$(get_plugins_data | jq -r ".[] | select(.id == \"$plugin\") | .repo")
+  plugin="${1}"
+  plugin_repo=$(get_plugins_data | jq -r ".[] | select(.id == \"$plugin\") | .repo")
 
-    # Apply repo patch if available
-    [ -f "${PLUGIN_PATCH_FILE}" ] \
-        && plugin_repo_patch=$(jq -r ".[] | select(.id == \"$plugin\") | .repo" "${PLUGIN_PATCH_FILE}") \
-        || plugin_repo_patch=""
-    [ -z "${plugin_repo_patch}" ] || plugin_repo="${plugin_repo_patch}"
+  # Apply repo patch if available
+  [ -f "${PLUGIN_PATCH_FILE}" ] &&
+    plugin_repo_patch=$(jq -r ".[] | select(.id == \"$plugin\") | .repo" "${PLUGIN_PATCH_FILE}") ||
+    plugin_repo_patch=""
+  [ -z "${plugin_repo_patch}" ] || plugin_repo="${plugin_repo_patch}"
 
-    [ -z "${plugin_repo}" ] && die "Failed to find the repo for the plugin ${GRAY}${plugin}${NOFORMAT}"
-    echo "${plugin_repo}"
+  [ -z "${plugin_repo}" ] && die "Failed to find the repo for the plugin ${GRAY}${plugin}${NOFORMAT}"
+  echo "${plugin_repo}"
 }
 get_theme_repo() {
-    theme="${1}"
-    theme_repo=$(get_themes_data | jq -r ".[] | select(.name == \"$theme\") | .repo")
-    [ -z "${theme_repo}" ] && die "Failed to find the repo for the theme ${GRAY}${theme}${NOFORMAT}"
-    echo "${theme_repo}"
+  theme="${1}"
+  theme_repo=$(get_themes_data | jq -r ".[] | select(.name == \"$theme\") | .repo")
+  [ -z "${theme_repo}" ] && die "Failed to find the repo for the theme ${GRAY}${theme}${NOFORMAT}"
+  echo "${theme_repo}"
 }
 
 install_plugin() {
-    plugin_id="${1}"
+  plugin_id="${1}"
 
-    [ "${FORCE}" -ne 1 ] && [ -f "${PLUGINS_DIR}/$plugin_id/${PLUGIN_ASSETS[0]}" ] && msg "${GRAY}$plugin_id${NOFORMAT} already installed, skipping..." && return
-    repo="$(get_plugin_repo $plugin_id)"
+  [ "${FORCE}" -ne 1 ] && [ -f "${PLUGINS_DIR}/$plugin_id/${PLUGIN_ASSETS[0]}" ] && msg "${GRAY}$plugin_id${NOFORMAT} already installed, skipping..." && return
+  repo="$(get_plugin_repo $plugin_id)"
 
-    msg "Installing plugin ${GRAY}$plugin_id${NOFORMAT}..."
-    download_latest_gh_assets "$repo" "${PLUGINS_DIR}/$plugin_id" "${PLUGIN_ASSETS[@]}"
+  msg "Installing plugin ${GRAY}$plugin_id${NOFORMAT}..."
+  download_latest_gh_assets "$repo" "${PLUGINS_DIR}/$plugin_id" "${PLUGIN_ASSETS[@]}"
 }
 install_theme() {
-    theme_name="${1}"
+  theme_name="${1}"
 
-    [ "${FORCE}" -ne 1 ] && [ -d "${THEMES_DIR}/$theme_name" ] && msg "${GRAY}$theme_name${NOFORMAT} already installed, skipping..." && return
-    repo="$(get_theme_repo "$theme_name")"
+  [ "${FORCE}" -ne 1 ] && [ -d "${THEMES_DIR}/$theme_name" ] && msg "${GRAY}$theme_name${NOFORMAT} already installed, skipping..." && return
+  repo="$(get_theme_repo "$theme_name")"
 
-    msg "Installing theme ${GRAY}$theme_name${NOFORMAT}..."
-    download_latest_gh_assets "$repo" "${THEMES_DIR}/$theme_name" "${THEME_ASSETS[@]}"
+  msg "Installing theme ${GRAY}$theme_name${NOFORMAT}..."
+  download_latest_gh_assets "$repo" "${THEMES_DIR}/$theme_name" "${THEME_ASSETS[@]}"
 }
 
 setup_colors
@@ -191,27 +191,27 @@ plugins=$(jq -r '.[]' ${PLUGIN_LIST_FILE})
 theme=$(jq -r '.cssTheme' ${APPEARANCE_FILE})
 
 INSTALL_THEME=0
-if [ -z "${PLUGIN_SELECTION[*]}" ]; then 
-    msg
-    msg "Found registered community plugins:"
-    msg "${GRAY}$(join_list "$plugins")${NOFORMAT}"
+if [ -z "${PLUGIN_SELECTION[*]}" ]; then
+  msg
+  msg "Found registered community plugins:"
+  msg "${GRAY}$(join_list "$plugins")${NOFORMAT}"
 
-    INSTALL_THEME=1
+  INSTALL_THEME=1
 else
-    plugins=$(printf '%s\n' "${PLUGIN_SELECTION[@]}")
+  plugins=$(printf '%s\n' "${PLUGIN_SELECTION[@]}")
 fi
 
 msg
 msg "Installing plugins to ${PLUGINS_DIR}"
 
 while IFS= read -r plugin; do
-    install_plugin "$plugin"
-done <<< "$plugins"
+  install_plugin "$plugin"
+done <<<"$plugins"
 
-if [ -z "${INSTALL_THEME}" ]; then 
-    msg
-    msg "Installing theme to ${THEMES_DIR}"
-    install_theme "$theme"
+if [ "${INSTALL_THEME}" -eq 1 ]; then
+  msg
+  msg "Installing theme to ${THEMES_DIR}"
+  install_theme "$theme"
 fi
 
 msg
